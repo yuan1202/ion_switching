@@ -38,7 +38,7 @@ with open('../input/batch_ids_tst.pkl', 'rb') as f:
     batch_id_tst = pickle.load(f)
 
 # ==================================================================
-wndw = 250
+wndw = 1000
 
 def maximum(srs): return srs.max()
 def minimum(srs): return srs.min()
@@ -101,25 +101,6 @@ def abs_q75(srs): return srs.abs().quantile(.75)
 def abs_q25(srs): return srs.abs().quantile(.25)
 def abs_q10(srs): return srs.abs().quantile(.10)
 def abs_q01(srs): return srs.abs().quantile(.01)
-
-def trend(srs, abs_values=False):
-    if np.any(np.isnan(srs)):
-        return np.nan
-    else:
-        srs_cp = srs.copy(deep=True)
-        srs_cp.fillna(0, inplace=True)
-        ndx = np.array(range(srs_cp.shape[0])).reshape(-1, 1)
-        if abs_values:
-            arr = srs_cp.abs().values.reshape(-1, 1)
-        else:
-            arr = srs_cp.values.reshape(-1, 1)
-
-        lr = LinearRegression()
-        lr.fit(ndx, arr)
-
-        return lr.coef_[0][0]
-
-def abs_trend(srs): return trend(srs)
 
 def abs_average(srs): return srs.abs().mean()
 def abs_standard_deviation(srs): return srs.abs().std()
@@ -308,7 +289,7 @@ feat_func_list = [
     
     q99, q90, q75, q25, q10, q01, abs_q99, abs_q90, abs_q75, abs_q25, abs_q10, abs_q01,
     
-    abs_average, abs_standard_deviation, # trend, abs_trend, 
+    abs_average, abs_standard_deviation,
     mad, kurt, skew, med,
     hilbert_mean, hann_wndw_mean,
     
@@ -346,7 +327,7 @@ for wd in (wndw//5, wndw//10, wndw//20):
     feat_func_list.append(g_utils.named_partial(roll_avg_avg_change_rate, window=wd))
     feat_func_list.append(g_utils.named_partial(roll_avg_abs_max, window=wd))
     
-    for p in [1, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 99]:
+    for p in [1, 10, 25, 50, 75, 90, 99]:
         feat_func_list.append(g_utils.named_partial(roll_std_qntl, window=wd, qntl=p/100))
         feat_func_list.append(g_utils.named_partial(roll_avg_qntl, window=wd, qntl=p/100))
 
@@ -365,12 +346,12 @@ for slice_length in [wndw//20, wndw//10, wndw//5, wndw//2]:
     feat_func_list.append(g_utils.named_partial(first_change_rate, length=slice_length))
     feat_func_list.append(g_utils.named_partial(last_change_rate, length=slice_length))
     
-def pctl(srs, p): return srs.quantile(p)
-def abs_pctl(srs, p): return srs.abs().quantile(p)
+# def pctl(srs, p): return srs.quantile(p)
+# def abs_pctl(srs, p): return srs.abs().quantile(p)
 
-for p in [1, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 99]:
-    feat_func_list.append(g_utils.named_partial(pctl, p=p/100))
-    feat_func_list.append(g_utils.named_partial(abs_pctl, p=p/100))
+# for p in [1, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 99]:
+#     feat_func_list.append(g_utils.named_partial(pctl, p=p/100))
+#     feat_func_list.append(g_utils.named_partial(abs_pctl, p=p/100))
     
 def exp_MA_avg(srs, span): return srs.ewm(span=span).mean(skipna=True).mean(skipna=True)
 def exp_MA_std(srs, span): return srs.ewm(span=span).mean(skipna=True).std(skipna=True)
@@ -411,7 +392,7 @@ for c in range(-120, 130, 10):
 def runner_v2(ndx, serie, period):
     sr_slice = serie.iloc[ndx:ndx+period]
     # get feature and name
-    feat, dat = ts_utils.feature_runner(serie, feat_func_list)
+    feat, dat = ts_utils.feature_runner(sr_slice, feat_func_list)
     # collect label
     lbl = trgt.iloc[ndx]
     return feat, dat, lbl, ndx
@@ -438,7 +419,7 @@ for i in range(10):
     
     # ------------------------
     # run left
-    with Pool(processes=12) as P:
+    with Pool(processes=10) as P:
         extracted = P.map_async(partial(runner_v2, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
         
     # post-process
@@ -455,7 +436,7 @@ for i in range(10):
     
     # ------------------------
     # run right
-    with Pool(processes=12) as P:
+    with Pool(processes=10) as P:
         extracted = P.map_async(partial(runner_v2, serie=sgnl_R, period=wndw), feature_extraction_ndcs).get()
         
     # post-process
@@ -468,6 +449,8 @@ for i in range(10):
     dat_R = dat_L[sort_R]
     lbl_R = lbl_L[sort_R]
     
+    del extracted
+
     # ------------------------
     # some checks
     assert np.all(lbl_L == lbl_R)

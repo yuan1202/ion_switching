@@ -1,3 +1,5 @@
 /input
 /**/.ipynb_checkpoints
 settings.json
+*.pyc
+*.pth
