@@ -38,7 +38,7 @@ with open('../input/batch_ids_tst.pkl', 'rb') as f:
     batch_id_tst = pickle.load(f)
 
 # ==================================================================
-wndw = 1000
+wndw = 500
 
 def maximum(srs): return srs.max()
 def minimum(srs): return srs.min()
@@ -397,17 +397,22 @@ def runner_v2(ndx, serie, period):
     lbl = trgt.iloc[ndx]
     return feat, dat, lbl, ndx
 
+def runner_v2_tst(ndx, serie, period):
+    sr_slice = serie.iloc[ndx:ndx+period]
+    # get feature and name
+    feat, dat = ts_utils.feature_runner(sr_slice, feat_func_list)
+    return feat, dat, ndx
 
 # ==================================================================
 
 start_time = datetime.now()
 
-for i in range(10):
+for i in range(20):
     print('============================')
     print('processing group #{:d}...'.format(i))
-    sgnl_ndcs = batch_id_trn[i]
-    sgnl = pdf_trn['signal'].iloc[sgnl_ndcs]
-    trgt = pdf_trn['open_channels'].iloc[sgnl_ndcs]
+    sgnl_ndcs = batch_id_tst[i]
+    sgnl = pdf_tst['signal'].iloc[sgnl_ndcs]
+    # trgt = pdf_tst['open_channels'].iloc[sgnl_ndcs]
     
     sgnl_L = pd.concat([pd.Series([np.nan] * (wndw-1)), sgnl])
     sgnl_R = pd.concat([sgnl, pd.Series([np.nan] * (wndw-1))])
@@ -420,59 +425,137 @@ for i in range(10):
     # ------------------------
     # run left
     with Pool(processes=10) as P:
-        extracted = P.map_async(partial(runner_v2, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
+        extracted = P.map_async(partial(runner_v2_tst, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
         
     # post-process
     feat_L = [n + '_L' for n in extracted[0][0]]
     dat_L = np.array([lst[1] for lst in extracted])
-    lbl_L = np.array([lst[2] for lst in extracted])
+    # lbl_L = np.array([lst[2] for lst in extracted])
     rank_L = np.array([lst[-1] for lst in extracted])
     
     sort_L = np.argsort(rank_L)
     dat_L = dat_L[sort_L]
-    lbl_L = lbl_L[sort_L]
+    # lbl_L = lbl_L[sort_L]
     
     del extracted
     
     # ------------------------
     # run right
     with Pool(processes=10) as P:
-        extracted = P.map_async(partial(runner_v2, serie=sgnl_R, period=wndw), feature_extraction_ndcs).get()
+        extracted = P.map_async(partial(runner_v2_tst, serie=sgnl_R, period=wndw), feature_extraction_ndcs).get()
         
     # post-process
     feat_R = [n + '_R' for n in extracted[0][0]]
     dat_R = np.array([lst[1] for lst in extracted])
-    lbl_R = np.array([lst[2] for lst in extracted])
+    # lbl_R = np.array([lst[2] for lst in extracted])
     rank_R = np.array([lst[-1] for lst in extracted])
     
     sort_R = np.argsort(rank_R)
     dat_R = dat_L[sort_R]
-    lbl_R = lbl_L[sort_R]
+    # lbl_R = lbl_L[sort_R]
     
     del extracted
 
     # ------------------------
     # some checks
-    assert np.all(lbl_L == lbl_R)
+    # assert np.all(lbl_L == lbl_R)
     feat = np.array(feat_L + feat_R)
     dat = np.concatenate([dat_L, dat_R], axis=1)
-    lbl = lbl_L
+    # lbl = lbl_L
     
     # ------------------------
     # save and clean up
-    bp.pack_ndarray_to_file(feat, '../input/trn_feat_g{:d}_w{:d}.bp'.format(i, wndw))
-    bp.pack_ndarray_to_file(dat, '../input/trn_dat_g{:d}_w{:d}.bp'.format(i, wndw))
-    bp.pack_ndarray_to_file(lbl, '../input/trn_lbl_g{:d}_w{:d}.bp'.format(i, wndw))
+    bp.pack_ndarray_to_file(feat, '../input/tst_feat_g{:d}_w{:d}.bp'.format(i, wndw))
+    bp.pack_ndarray_to_file(dat, '../input/tst_dat_g{:d}_w{:d}.bp'.format(i, wndw))
+    # bp.pack_ndarray_to_file(lbl, '../input/tst_lbl_g{:d}_w{:d}.bp'.format(i, wndw))
     
     del feature_extraction_ndcs
     del sgnl_L, sgnl_R
-    del feat_L, dat_L, lbl_L, rank_L, sort_L
-    del feat_R, dat_R, lbl_R, rank_R, sort_R
-    del feat, dat, lbl
+    del feat_L, dat_L, rank_L, sort_L
+    del feat_R, dat_R, rank_R, sort_R
+    del feat, dat
     
     gc.collect()
     
     elapsed = (datetime.now() - start_time).seconds
     print('total time elapsed {:d} minutes {:d} seconds.'.format(elapsed//60, elapsed%60))
+
+
+# # ==================================================================
+
+# start_time = datetime.now()
+
+# for i in range(10):
+#     print('============================')
+#     print('processing group #{:d}...'.format(i))
+#     sgnl_ndcs = batch_id_trn[i]
+#     sgnl = pdf_trn['signal'].iloc[sgnl_ndcs]
+#     trgt = pdf_trn['open_channels'].iloc[sgnl_ndcs]
+    
+#     sgnl_L = pd.concat([pd.Series([np.nan] * (wndw-1)), sgnl])
+#     sgnl_R = pd.concat([sgnl, pd.Series([np.nan] * (wndw-1))])
+#     del sgnl
+    
+#     feature_extraction_ndcs = list(
+#         ts_utils.index_sampler((0, sgnl_L.shape[0]), block_size=wndw, sample_ratio=1)
+#     )
+    
+#     # ------------------------
+#     # run left
+#     with Pool(processes=10) as P:
+#         extracted = P.map_async(partial(runner_v2, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
+        
+#     # post-process
+#     feat_L = [n + '_L' for n in extracted[0][0]]
+#     dat_L = np.array([lst[1] for lst in extracted])
+#     lbl_L = np.array([lst[2] for lst in extracted])
+#     rank_L = np.array([lst[-1] for lst in extracted])
+    
+#     sort_L = np.argsort(rank_L)
+#     dat_L = dat_L[sort_L]
+#     lbl_L = lbl_L[sort_L]
+    
+#     del extracted
+    
+#     # ------------------------
+#     # run right
+#     with Pool(processes=10) as P:
+#         extracted = P.map_async(partial(runner_v2, serie=sgnl_R, period=wndw), feature_extraction_ndcs).get()
+        
+#     # post-process
+#     feat_R = [n + '_R' for n in extracted[0][0]]
+#     dat_R = np.array([lst[1] for lst in extracted])
+#     lbl_R = np.array([lst[2] for lst in extracted])
+#     rank_R = np.array([lst[-1] for lst in extracted])
+    
+#     sort_R = np.argsort(rank_R)
+#     dat_R = dat_L[sort_R]
+#     lbl_R = lbl_L[sort_R]
+    
+#     del extracted
+
+#     # ------------------------
+#     # some checks
+#     assert np.all(lbl_L == lbl_R)
+#     feat = np.array(feat_L + feat_R)
+#     dat = np.concatenate([dat_L, dat_R], axis=1)
+#     lbl = lbl_L
+    
+#     # ------------------------
+#     # save and clean up
+#     bp.pack_ndarray_to_file(feat, '../input/trn_feat_g{:d}_w{:d}.bp'.format(i, wndw))
+#     bp.pack_ndarray_to_file(dat, '../input/trn_dat_g{:d}_w{:d}.bp'.format(i, wndw))
+#     bp.pack_ndarray_to_file(lbl, '../input/trn_lbl_g{:d}_w{:d}.bp'.format(i, wndw))
+    
+#     del feature_extraction_ndcs
+#     del sgnl_L, sgnl_R
+#     del feat_L, dat_L, lbl_L, rank_L, sort_L
+#     del feat_R, dat_R, lbl_R, rank_R, sort_R
+#     del feat, dat, lbl
+    
+#     gc.collect()
+    
+#     elapsed = (datetime.now() - start_time).seconds
+#     print('total time elapsed {:d} minutes {:d} seconds.'.format(elapsed//60, elapsed%60))
 
     
