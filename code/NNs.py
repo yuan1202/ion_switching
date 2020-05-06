@@ -129,9 +129,13 @@ class WaveTRSFM_Classifier(nn.Module):
         super().__init__()
         
         self.wave_block1 = Wave_Block(in_channels, 16, 12, kernel_size)
+        self.bn1         = nn.BatchNorm1d(16)
         self.wave_block2 = Wave_Block(16, 32, 8, kernel_size)
+        self.bn2         = nn.BatchNorm1d(32)
         self.wave_block3 = Wave_Block(32, 64, 4, kernel_size)
+        self.bn3         = nn.BatchNorm1d(64)
         self.wave_block4 = Wave_Block(64, 128, 1, kernel_size)
+        self.bn4         = nn.BatchNorm1d(128)
         self.TRSFM       = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=128, nhead=8), num_layers=6)
         self.fc = nn.Linear(128, 11)
 
@@ -140,9 +144,13 @@ class WaveTRSFM_Classifier(nn.Module):
         x = x.permute(0, 2, 1)
         
         x = self.wave_block1(x)
+        x = self.bn1(x)
         x = self.wave_block2(x)
+        x = self.bn2(x)
         x = self.wave_block3(x)
+        x = self.bn3(x)
         x = self.wave_block4(x)
+        x = self.bn4(x)
         
         # [batch, feature, sequence] => [sequence, batch, feature]
         x = x.permute(2, 0, 1)
