@@ -38,7 +38,7 @@ with open('../input/batch_ids_tst.pkl', 'rb') as f:
     batch_id_tst = pickle.load(f)
 
 # ==================================================================
-wndw = 500
+wndw = 200
 
 def maximum(srs): return srs.max()
 def minimum(srs): return srs.min()
@@ -140,14 +140,12 @@ def classic_sta_lta(x, length_sta, length_lta):
 
     return sta / lta
 
-def sta_lta_40_2_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 40), (wndw // 2)))
 def sta_lta_20_4_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 20), (wndw // 4)))
 def sta_lta_10_8_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 10), (wndw // 8)))
-def sta_lta_40_30_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 40), (wndw // 30)))
 def sta_lta_20_15_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 20), (wndw // 15)))
 def sta_lta_10_5_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 10), (wndw // 5)))
 def sta_lta_5_2_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 5), (wndw // 2)))
-def sta_lta_10_1_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 10), (wndw // 1)))
+def sta_lta_10_1_mean(srs): return np.nanmean(classic_sta_lta(srs, (wndw // 10), (wndw // 2)))
 
 # replaced by new functions
 def exp_MA_wndw_avg(srs): return srs.ewm(span=wndw).mean().mean(skipna=True)
@@ -293,9 +291,7 @@ feat_func_list = [
     mad, kurt, skew, med,
     hilbert_mean, hann_wndw_mean,
     
-    sta_lta_40_2_mean, sta_lta_20_4_mean, sta_lta_10_8_mean,
-    sta_lta_40_30_mean, sta_lta_20_15_mean, sta_lta_10_5_mean,
-    sta_lta_5_2_mean, sta_lta_10_1_mean,
+    sta_lta_20_4_mean, sta_lta_10_8_mean, sta_lta_20_15_mean, sta_lta_10_5_mean, sta_lta_5_2_mean, sta_lta_10_1_mean,
     
     MA_5th_wndw_std_avg, MA_5th_wndw_BBhigh_avg, MA_5th_wndw_BBlow_avg, 
     MA_2nd_wndw_std_avg, MA_2nd_wndw_BBhigh_avg, MA_2nd_wndw_BBlow_avg, 
@@ -384,7 +380,7 @@ for c in [wndw//20, wndw//10, wndw//5, wndw//2]:
 
 def wrapped_spkt_welch_density(srs, c): return list(feature_calculators.spkt_welch_density(srs, [{'coeff': c}]))[0][1]
 
-for c in range(-120, 130, 10):
+for c in range(-50, 60, 10):
     feat_func_list.append(g_utils.named_partial(wrapped_spkt_welch_density, c=c))
 
 
@@ -412,7 +408,6 @@ for i in range(20):
     print('processing group #{:d}...'.format(i))
     sgnl_ndcs = batch_id_tst[i]
     sgnl = pdf_tst['signal'].iloc[sgnl_ndcs]
-    # trgt = pdf_tst['open_channels'].iloc[sgnl_ndcs]
     
     sgnl_L = pd.concat([pd.Series([np.nan] * (wndw-1)), sgnl])
     sgnl_R = pd.concat([sgnl, pd.Series([np.nan] * (wndw-1))])
@@ -424,18 +419,16 @@ for i in range(20):
     
     # ------------------------
     # run left
-    with Pool(processes=10) as P:
+    with Pool(processes=12) as P:
         extracted = P.map_async(partial(runner_v2_tst, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
         
     # post-process
     feat_L = [n + '_L' for n in extracted[0][0]]
     dat_L = np.array([lst[1] for lst in extracted])
-    # lbl_L = np.array([lst[2] for lst in extracted])
     rank_L = np.array([lst[-1] for lst in extracted])
     
     sort_L = np.argsort(rank_L)
     dat_L = dat_L[sort_L]
-    # lbl_L = lbl_L[sort_L]
     
     del extracted
     
@@ -447,27 +440,22 @@ for i in range(20):
     # post-process
     feat_R = [n + '_R' for n in extracted[0][0]]
     dat_R = np.array([lst[1] for lst in extracted])
-    # lbl_R = np.array([lst[2] for lst in extracted])
     rank_R = np.array([lst[-1] for lst in extracted])
     
     sort_R = np.argsort(rank_R)
     dat_R = dat_L[sort_R]
-    # lbl_R = lbl_L[sort_R]
     
     del extracted
 
     # ------------------------
     # some checks
-    # assert np.all(lbl_L == lbl_R)
     feat = np.array(feat_L + feat_R)
     dat = np.concatenate([dat_L, dat_R], axis=1)
-    # lbl = lbl_L
     
     # ------------------------
     # save and clean up
     bp.pack_ndarray_to_file(feat, '../input/tst_feat_g{:d}_w{:d}.bp'.format(i, wndw))
     bp.pack_ndarray_to_file(dat, '../input/tst_dat_g{:d}_w{:d}.bp'.format(i, wndw))
-    # bp.pack_ndarray_to_file(lbl, '../input/tst_lbl_g{:d}_w{:d}.bp'.format(i, wndw))
     
     del feature_extraction_ndcs
     del sgnl_L, sgnl_R
@@ -481,81 +469,78 @@ for i in range(20):
     print('total time elapsed {:d} minutes {:d} seconds.'.format(elapsed//60, elapsed%60))
 
 
-# # ==================================================================
+# ==================================================================
 
-# start_time = datetime.now()
-
-# for i in range(10):
-#     print('============================')
-#     print('processing group #{:d}...'.format(i))
-#     sgnl_ndcs = batch_id_trn[i]
-#     sgnl = pdf_trn['signal'].iloc[sgnl_ndcs]
-#     trgt = pdf_trn['open_channels'].iloc[sgnl_ndcs]
+for i in range(10):
+    print('============================')
+    print('processing group #{:d}...'.format(i))
+    sgnl_ndcs = batch_id_trn[i]
+    sgnl = pdf_trn['signal'].iloc[sgnl_ndcs]
+    trgt = pdf_trn['open_channels'].iloc[sgnl_ndcs]
     
-#     sgnl_L = pd.concat([pd.Series([np.nan] * (wndw-1)), sgnl])
-#     sgnl_R = pd.concat([sgnl, pd.Series([np.nan] * (wndw-1))])
-#     del sgnl
+    sgnl_L = pd.concat([pd.Series([np.nan] * (wndw-1)), sgnl])
+    sgnl_R = pd.concat([sgnl, pd.Series([np.nan] * (wndw-1))])
+    del sgnl
     
-#     feature_extraction_ndcs = list(
-#         ts_utils.index_sampler((0, sgnl_L.shape[0]), block_size=wndw, sample_ratio=1)
-#     )
+    feature_extraction_ndcs = list(
+        ts_utils.index_sampler((0, sgnl_L.shape[0]), block_size=wndw, sample_ratio=1)
+    )
     
-#     # ------------------------
-#     # run left
-#     with Pool(processes=10) as P:
-#         extracted = P.map_async(partial(runner_v2, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
+    # ------------------------
+    # run left
+    with Pool(processes=12) as P:
+        extracted = P.map_async(partial(runner_v2, serie=sgnl_L, period=wndw), feature_extraction_ndcs).get()
         
-#     # post-process
-#     feat_L = [n + '_L' for n in extracted[0][0]]
-#     dat_L = np.array([lst[1] for lst in extracted])
-#     lbl_L = np.array([lst[2] for lst in extracted])
-#     rank_L = np.array([lst[-1] for lst in extracted])
+    # post-process
+    feat_L = [n + '_L' for n in extracted[0][0]]
+    dat_L = np.array([lst[1] for lst in extracted])
+    lbl_L = np.array([lst[2] for lst in extracted])
+    rank_L = np.array([lst[-1] for lst in extracted])
     
-#     sort_L = np.argsort(rank_L)
-#     dat_L = dat_L[sort_L]
-#     lbl_L = lbl_L[sort_L]
+    sort_L = np.argsort(rank_L)
+    dat_L = dat_L[sort_L]
+    lbl_L = lbl_L[sort_L]
     
-#     del extracted
+    del extracted
     
-#     # ------------------------
-#     # run right
-#     with Pool(processes=10) as P:
-#         extracted = P.map_async(partial(runner_v2, serie=sgnl_R, period=wndw), feature_extraction_ndcs).get()
+    # ------------------------
+    # run right
+    with Pool(processes=10) as P:
+        extracted = P.map_async(partial(runner_v2, serie=sgnl_R, period=wndw), feature_extraction_ndcs).get()
         
-#     # post-process
-#     feat_R = [n + '_R' for n in extracted[0][0]]
-#     dat_R = np.array([lst[1] for lst in extracted])
-#     lbl_R = np.array([lst[2] for lst in extracted])
-#     rank_R = np.array([lst[-1] for lst in extracted])
+    # post-process
+    feat_R = [n + '_R' for n in extracted[0][0]]
+    dat_R = np.array([lst[1] for lst in extracted])
+    lbl_R = np.array([lst[2] for lst in extracted])
+    rank_R = np.array([lst[-1] for lst in extracted])
     
-#     sort_R = np.argsort(rank_R)
-#     dat_R = dat_L[sort_R]
-#     lbl_R = lbl_L[sort_R]
+    sort_R = np.argsort(rank_R)
+    dat_R = dat_L[sort_R]
+    lbl_R = lbl_L[sort_R]
     
-#     del extracted
+    del extracted
 
-#     # ------------------------
-#     # some checks
-#     assert np.all(lbl_L == lbl_R)
-#     feat = np.array(feat_L + feat_R)
-#     dat = np.concatenate([dat_L, dat_R], axis=1)
-#     lbl = lbl_L
+    # ------------------------
+    # some checks
+    assert np.all(lbl_L == lbl_R)
+    feat = np.array(feat_L + feat_R)
+    dat = np.concatenate([dat_L, dat_R], axis=1)
+    lbl = lbl_L
     
-#     # ------------------------
-#     # save and clean up
-#     bp.pack_ndarray_to_file(feat, '../input/trn_feat_g{:d}_w{:d}.bp'.format(i, wndw))
-#     bp.pack_ndarray_to_file(dat, '../input/trn_dat_g{:d}_w{:d}.bp'.format(i, wndw))
-#     bp.pack_ndarray_to_file(lbl, '../input/trn_lbl_g{:d}_w{:d}.bp'.format(i, wndw))
+    # ------------------------
+    # save and clean up
+    bp.pack_ndarray_to_file(feat, '../input/trn_feat_g{:d}_w{:d}.bp'.format(i, wndw))
+    bp.pack_ndarray_to_file(dat, '../input/trn_dat_g{:d}_w{:d}.bp'.format(i, wndw))
+    bp.pack_ndarray_to_file(lbl, '../input/trn_lbl_g{:d}_w{:d}.bp'.format(i, wndw))
     
-#     del feature_extraction_ndcs
-#     del sgnl_L, sgnl_R
-#     del feat_L, dat_L, lbl_L, rank_L, sort_L
-#     del feat_R, dat_R, lbl_R, rank_R, sort_R
-#     del feat, dat, lbl
+    del feature_extraction_ndcs
+    del sgnl_L, sgnl_R
+    del feat_L, dat_L, lbl_L, rank_L, sort_L
+    del feat_R, dat_R, lbl_R, rank_R, sort_R
+    del feat, dat, lbl
     
-#     gc.collect()
+    gc.collect()
     
-#     elapsed = (datetime.now() - start_time).seconds
-#     print('total time elapsed {:d} minutes {:d} seconds.'.format(elapsed//60, elapsed%60))
-
+    elapsed = (datetime.now() - start_time).seconds
+    print('total time elapsed {:d} minutes {:d} seconds.'.format(elapsed//60, elapsed%60))
     
