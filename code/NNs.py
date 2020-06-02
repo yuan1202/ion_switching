@@ -312,3 +312,50 @@ class RNN_Classifier(nn.Module):
         x = x.permute(0, 2, 1)
         x = self.fc(x)
         return x
+    
+    
+class RnnTRSFM_Classifier(nn.Module):
+
+    def __init__(self, in_channels=7, kernel_size=3):
+        super().__init__()
+        
+        self.rnn0        = nn.LSTM(input_size=in_channels, hidden_size=16, num_layers=1, dropout=.2, bidirectional=True)
+        self.bn0         = nn.BatchNorm1d(32)
+        self.rnn1        = nn.LSTM(input_size=32, hidden_size=32, num_layers=1, dropout=.2, bidirectional=True)
+        self.bn1         = nn.BatchNorm1d(64)
+        self.rnn2        = nn.LSTM(input_size=64, hidden_size=64, num_layers=1, dropout=.2, bidirectional=True)
+        self.bn2         = nn.BatchNorm1d(128)
+        self.TRSFM       = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=128, nhead=8), num_layers=6)
+        self.bn3         = nn.BatchNorm1d(128)
+        self.fc          = nn.Linear(128, 11)
+
+    def forward(self, x):
+        # [batch, sequence, feature] => [sequence, batch, feature]
+        x = x.permute(1, 0, 2)
+        x, _ = self.rnn0(x)
+        # [sequence, batch, feature] => [batch, feature, sequence]
+        x = x.permute(1, 2, 0)
+        x = self.bn0(x)
+        # [batch, feature, sequence] => [sequence, batch, feature]
+        x = x.permute(2, 0, 1)
+        x, _ = self.rnn1(x)
+        # [sequence, batch, feature] => [batch, feature, sequence]
+        x = x.permute(1, 2, 0)
+        x = self.bn1(x)
+        # [batch, feature, sequence] => [sequence, batch, feature]
+        x = x.permute(2, 0, 1)
+        x, _ = self.rnn2(x)
+        # [sequence, batch, feature] => [batch, feature, sequence]
+        x = x.permute(1, 2, 0)
+        x = self.bn2(x)
+        # [batch, feature, sequence] => [sequence, batch, feature]
+        x = x.permute(2, 0, 1)
+        x = self.TRSFM(x)
+        # [sequence, batch, feature] => [batch, feature, sequence]
+        x = x.permute(1, 2, 0)
+        x = self.bn3(x)
+        
+        # [batch, feature, sequence] => [batch, sequence, feature]
+        x = x.permute(0, 2, 1)
+        x = self.fc(x)
+        return x

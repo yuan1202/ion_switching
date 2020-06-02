@@ -25,50 +25,36 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from sklearn.model_selection import StratifiedKFold, RepeatedStratifiedKFold, GroupKFold
 from sklearn.metrics import f1_score
 
-from NNs import WaveTRSFM_Classifier, Wave_Classifier, WaveRNN_Classifier, RNN_Classifier
+from NNs import WaveTRSFM_Classifier, WaveTRSFM_Classifier_shallow, Wave_Classifier, WaveRNN_Classifier, RNN_Classifier
 
 
 DEVICE = 'cuda:0'
 EPOCHS = 128
-BATCHSIZE = 64
+BATCHSIZE = 32
 SEED = 19550423
-LR = 0.0005
-SPLITS = 5
-unit = 1000
+LR = 0.001
+#unit = 1000
 
+step = 's1000'
+wndw = 'w1000'
+vers = 'final'
 
-step_tag = 's500'
-wndw_tag = 'w500'
-vers_tag = 'final'
-trn_fs = sorted([f for f in os.listdir('../input/feats_srs') if (('trn_srs_dat' in f) and (step_tag in f) and (wndw_tag in f) and (vers_tag in f))])
-lbl_fs = sorted([f for f in os.listdir('../input/feats_srs') if ('trn_srs_lbl' in f) and (step_tag in f) and (wndw_tag in f) and (vers_tag in f)])
-
-# tst_fs = sorted([f for f in os.listdir('../input/feats_srs') if (('tst_srs_dat' in f) and (step_tag in f) and (wndw_tag in f) and (vers_tag in f))])
-# tst_fs = [tst_fs[i] for i in [0, 11, 12, 13, 14, 15, 16, 17, 18, 19]] + tst_fs[1:11]
-
+trn_fs = sorted([f for f in os.listdir('../input/feats_srs') if (('trn_srs_dat' in f) and (step in f) and (wndw in f) and (vers in f))])
+lbl_fs = sorted([f for f in os.listdir('../input/feats_srs') if ('trn_srs_lbl' in f) and (step in f) and (wndw in f) and (vers in f)])
 
 series_dat_all = np.concatenate(
     [bp.unpack_ndarray_from_file(os.path.join('../input/feats_srs', f)) for f in trn_fs],
     axis=0
 )
 
-series_lbl_all = [bp.unpack_ndarray_from_file(os.path.join('../input/feats_srs', f)) for f in lbl_fs]
+series_lbl_all = np.concatenate([bp.unpack_ndarray_from_file(os.path.join('../input/feats_srs', f)) for f in lbl_fs], axis=0)[:, :, None]
 
 series_bch_all = np.concatenate(
-    [np.ones(shape=(arr.shape[0],)) * i for i, arr in zip([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], series_lbl_all)],
+    [np.ones(shape=(series_lbl_all.shape[0] // 10,)) * i for i in range(10)],
     axis=0
 ).astype(int)
 
-series_lbl_all = np.concatenate(
-    series_lbl_all,
-    axis=0
-)[:, :, None]
-
-# series_dat_tst = np.concatenate(
-#     [bp.unpack_ndarray_from_file(os.path.join('../input/feats_srs', f)) for f in tst_fs],
-#     axis=0
-# )
-
+print(np.unique(series_bch_all, return_counts=True))
 
 for i in range(series_dat_all.shape[-1]):
 
@@ -289,7 +275,7 @@ for fld, (ndcs_trn, ndcs_vld) in enumerate(rskf.split(series_dat_all, skf_trgt))
     }
     
     # setup fold model
-    mdl = RNN_Classifier(series_dat_all.shape[-1]).to(DEVICE)
+    mdl = Wave_Classifier(series_dat_all.shape[-1]).to(DEVICE)
     critrn = nn.CrossEntropyLoss()
     optimzr = torch.optim.AdamW(mdl.parameters(), lr=LR)
     schdlr = torch.optim.lr_scheduler.CosineAnnealingLR(optimzr, T_max=EPOCHS, eta_min=LR/100)
@@ -299,7 +285,7 @@ for fld, (ndcs_trn, ndcs_vld) in enumerate(rskf.split(series_dat_all, skf_trgt))
         model=mdl, optimizer=optimzr, criterion=critrn,
         scheduler=schdlr, training_loader=loader_trn, validation_loaders=vld_loaders,
         fold_number=fld,
-        save_path='./saved_models/pure_RNN_model_final_feats_w500_fold{:03d}_checkpoint.pth',
+        save_path='./saved_models/wave_net_model_{}_feats_{}_{}_fold{:03d}_checkpoint.pth'.format(vers, step, wndw, fld),
         early_stopping=50
     )
     
@@ -313,7 +299,7 @@ for fld, (ndcs_trn, ndcs_vld) in enumerate(rskf.split(series_dat_all, skf_trgt))
 
 for fld in range(15):
     print('-------- fold {:d} --------'.format(fld))
-    fld_weight = torch.load('./saved_models/pure_RNN_model_final_feats_w500_fold{:03d}_checkpoint.pth'.format(fld))
+    fld_weight = torch.load('./saved_models/wave_net_model_{}_feats_{}_{}_fold{:03d}_checkpoint.pth'.format(vers, step, wndw, fld))
     print('model validation loss: {:.3f}; validation f1: {:.3f};'.format(fld_weight['loss'], fld_weight['f1']))
 #     mdl = WaveTRSFM_Classifier(series_trn.shape[-1]).to(DEVICE)
 #     mdl.load_state_dict(fld_weight['model'])
